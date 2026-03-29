@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.vs/
+
+# Local extra outputs
+results/*_01.csv

@@ -980,9 +980,11 @@ def main() -> None:
     params, gains, tuning_metrics, tuning_results = auto_tune_controller(base_params)
     pid = build_pid(params, gains)
     output_dir = Path(__file__).resolve().parent
+    results_dir = output_dir / "results"
     plots_dir = output_dir / "plots"
-    tuning_csv = output_dir / "tvc_rocket_tuning_results.csv"
-    history_csv = output_dir / "tvc_rocket_best_history.csv"
+    results_dir.mkdir(parents=True, exist_ok=True)
+    tuning_csv = results_dir / "tvc_rocket_tuning_results.csv"
+    history_csv = results_dir / "tvc_rocket_best_history.csv"
 
     print("Meilleure configuration trouvee")
     print(f"Mode de tuning       : {params.tuning_mode}")
