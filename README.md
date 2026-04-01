@@ -20,7 +20,9 @@ Simulation Python d'une fusee a poussee vectorielle (`TVC`) avec :
 - `tvc_rocket/geodesic_guidance.py` : preparation de guidage longue portee en repere Terre/ECEF puis ENU local, avec azimuth de lancement
 - `tvc_rocket/simulation_earth_guided.py` : solveur Earth-guided simplifie dans le repere ENU aligne sur la cible geodesique
 - `tvc_rocket/plotting_earth_guided.py` : resume et graphes du mode Earth-guided
-- `tvc_rocket/gui.py` : interface graphique simple pour ville cible, rapport geographique et simulation Earth-guided
+- `tvc_rocket/gui.py` : interface graphique avec ville cible, parametres vehicule editables, rapport geographique, design mission et lancement direct de simulations
+- `tvc_rocket/gui_storage.py` : sauvegarde/chargement de presets GUI et export JSON des missions
+- `tvc_rocket/mission_design.py` : recommandations de conception mission a partir de la cible geographique et du plan de guidage
 - `tvc_rocket/tuning.py` : autotuning et raffinements des gains
 - `tvc_rocket/output.py` : export CSV et gestion de matplotlib
 - `tvc_rocket/plotting.py` : graphiques et resume console
@@ -52,6 +54,8 @@ python tvc_rocket.py --mode 6dof-guided --guided-short-range --save-only --impac
 python tvc_rocket.py --target-city Paris --target-country France --target-offline-only --target-report-only
 python tvc_rocket.py --target-city Tokyo --target-report-only
 python tvc_rocket.py --target-city Tokyo --guidance-report-only
+python tvc_rocket.py --target-city Brazzaville --target-offline-only --mission-design-only
+python tvc_rocket.py --target-city Brazzaville --target-offline-only --apply-mission-design --mode earth-guided --save-only
 python tvc_rocket.py --mode earth-guided --target-city Brazzaville --target-offline-only --save-only
 python tvc_rocket.py --mode earth-guided --earth-guided-regional --target-city Brazzaville --target-offline-only --save-only
 python tvc_rocket.py --gui
@@ -88,6 +92,8 @@ python tvc_rocket.py --no-tune --impact-target 1000 --gamma-final-deg 74
 - `--guidance-report-only` : affiche le plan de guidage geodesique Terre/ENU pour la ville cible
 - `--mode earth-guided` : lance le solveur simplifie ENU aligne sur la cible geodesique
 - `--earth-guided-regional` : applique un preset energetique regional pour mieux couvrir les cibles autour de Kinshasa
+- `--mission-design-only` : affiche les recommandations de conception mission a partir de la ville cible
+- `--apply-mission-design` : applique ces recommandations aux parametres du vehicule/simulateur
 - `--gui` : ouvre l'interface graphique locale
 - `--preview-3d` : produit une preview 3D simplifiee avec derive laterale et graphe dedie
 - `--save-only` : sauvegarde les PNG sans ouvrir les fenetres
@@ -111,7 +117,9 @@ python -m unittest discover -s tests -v
 - Le module `geodesic_guidance.py` ajoute une preparation de guidage dans un repere Terre : conversion en ECEF, projection ENU locale, azimuth de lancement, ligne de visee et lecture d'integration future vers un vrai systeme de navigation.
 - Le mode `earth-guided` reste simplifie : il est utile comme passerelle entre la cible geographique et un vrai solveur de navigation, mais ne remplace pas encore une propagation inertielle/ballistique complete longue portee.
 - Le preset `--earth-guided-regional` sert a etudier plus serieusement des cibles regionales comme Brazzaville avec un demonstrateur energetique plus adapte et une meilleure fermeture sur la cible.
-- L'interface graphique sert a saisir rapidement une ville cible, afficher les rapports et lancer une premiere simulation Earth-guided sans passer par la ligne de commande.
+- Le module `mission_design.py` propose une lecture systeme simple : classe de mission, delta-v requis, ratio de masse estime, poussee/burn time/propellant recommandes.
+- L'interface graphique permet maintenant aussi d'editer poussee, masse propulsive, burn time, angle initial et altitude cible, puis de lancer directement `Earth Guided` ou `6DOF Guided`.
+- Elle permet aussi de sauvegarder des presets utilisateur dans `presets/`, de les recharger, d'exporter une mission complete en JSON dans `exports/`, et de comparer rapidement presets et missions exportees.
 - En mode connecte, `--target-city` essaie de resoudre n'importe quelle ville via Nominatim et de recuperer l'altitude via Open-Elevation ; hors ligne, un catalogue local de grandes villes reste disponible.
 - Le lancement reste `python tvc_rocket.py`, meme si le code interne est maintenant modulaire.
 - Les fichiers CSV et PNG sont regeneres dans `results/` et `plots/`.

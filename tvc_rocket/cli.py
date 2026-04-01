@@ -6,6 +6,11 @@ from pathlib import Path
 
 from .geodesic_guidance import build_geodesic_guidance_plan, format_geodesic_guidance_report
 from .gui import launch_gui
+from .mission_design import (
+    apply_mission_design_recommendation,
+    build_mission_design_recommendation,
+    format_mission_design_report,
+)
 from .models import ControllerGains, RocketParameters, TuningResult, default_controller_gains
 from .output import write_history_csv, write_tuning_csv
 from .plotting_earth_guided import maybe_plot_earth_guided, summarize_earth_guided
@@ -161,6 +166,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Active un preset energetique regional pour le mode earth-guided autour de Kinshasa.",
     )
+    parser.add_argument(
+        "--mission-design-only",
+        action="store_true",
+        help="Affiche aussi les recommandations de conception mission a partir de la ville cible, puis quitte.",
+    )
+    parser.add_argument(
+        "--apply-mission-design",
+        action="store_true",
+        help="Applique les recommandations de conception mission aux parametres de simulation courants.",
+    )
     return parser.parse_args(argv)
 
 
@@ -197,9 +212,24 @@ def main() -> None:
         if args.earth_guided_regional:
             base_params = build_regional_earth_guided_params(base_params, profile)
         guidance_plan = build_geodesic_guidance_plan(profile, base_params)
+        design = build_mission_design_recommendation(base_params, profile, guidance_plan)
         print(format_mission_target_report(profile))
         print()
         print(format_geodesic_guidance_report(guidance_plan))
+        print()
+        print(format_mission_design_report(design))
+        if args.apply_mission_design:
+            base_params = apply_mission_design_recommendation(base_params, design)
+            guidance_plan = build_geodesic_guidance_plan(profile, base_params)
+            print()
+            print(
+                "Application design   : "
+                f"thrust={base_params.thrust:.1f} N "
+                f"burn_time={base_params.burn_time:.1f} s "
+                f"propellant={base_params.propellant_mass:.1f} kg "
+                f"theta0={base_params.theta_initial_deg:.1f} deg "
+                f"alt_target={base_params.altitude_target:.1f} m"
+            )
         if args.apply_city_target:
             base_params = replace(
                 base_params,
@@ -218,7 +248,7 @@ def main() -> None:
                     "Attention            : distance geographique tres grande pour le demonstrateur actuel ; "
                     "les solveurs presents restent surtout utiles pour l'etude du guidage."
                 )
-        if args.target_report_only or args.guidance_report_only:
+        if args.target_report_only or args.guidance_report_only or args.mission_design_only:
             return
 
     output_dir = Path(__file__).resolve().parent.parent
