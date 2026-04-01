@@ -4,8 +4,11 @@ import argparse
 from dataclasses import replace
 from pathlib import Path
 
+from .geodesic_guidance import build_geodesic_guidance_plan, format_geodesic_guidance_report
+from .gui import launch_gui
 from .models import ControllerGains, RocketParameters, TuningResult, default_controller_gains
 from .output import write_history_csv, write_tuning_csv
+from .plotting_earth_guided import maybe_plot_earth_guided, summarize_earth_guided
 from .plotting import (
     maybe_plot,
     maybe_plot_3d_preview,
@@ -24,6 +27,12 @@ from .simulation_6dof_guided import (
     simulate_rocket_6dof_guided,
     summarize_6dof_guided_metrics,
 )
+from .simulation_earth_guided import (
+    build_regional_earth_guided_params,
+    simulate_earth_guided,
+    summarize_earth_guided_metrics,
+)
+from .targeting import build_mission_target_profile, format_mission_target_report
 from .tuning import auto_tune_controller
 
 
@@ -90,9 +99,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--mode",
-        choices=("2d", "6dof", "6dof-guided"),
+        choices=("2d", "6dof", "6dof-guided", "earth-guided"),
         default="2d",
-        help="Mode principal de simulation : 2d, 6dof experimental, ou 6dof-guided pour le tuning 3D cible.",
+        help="Mode principal de simulation : 2d, 6dof, 6dof-guided, ou earth-guided pour une cible geodesique.",
     )
     parser.add_argument(
         "--preview-3d",
@@ -109,6 +118,48 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--guided-short-range",
         action="store_true",
         help="Active un preset 6dof-guided adapte aux cibles courtes autour de 800 m.",
+    )
+    parser.add_argument(
+        "--target-city",
+        type=str,
+        default=None,
+        help="Nom de la ville cible sur le globe a geolocaliser depuis Kinshasa.",
+    )
+    parser.add_argument(
+        "--target-country",
+        type=str,
+        default=None,
+        help="Pays de la ville cible pour aider le geocodage.",
+    )
+    parser.add_argument(
+        "--target-offline-only",
+        action="store_true",
+        help="Utilise seulement le catalogue local de villes, sans requetes Internet.",
+    )
+    parser.add_argument(
+        "--target-report-only",
+        action="store_true",
+        help="Affiche seulement le rapport geographique et mission, puis quitte.",
+    )
+    parser.add_argument(
+        "--apply-city-target",
+        action="store_true",
+        help="Convertit explicitement la cible geographique en distance/altitude pour la simulation courante.",
+    )
+    parser.add_argument(
+        "--guidance-report-only",
+        action="store_true",
+        help="Affiche le plan de guidage geodesique associe a la ville cible, puis quitte.",
+    )
+    parser.add_argument(
+        "--gui",
+        action="store_true",
+        help="Ouvre une interface graphique simple pour saisir une ville cible et lancer les rapports/simulations.",
+    )
+    parser.add_argument(
+        "--earth-guided-regional",
+        action="store_true",
+        help="Active un preset energetique regional pour le mode earth-guided autour de Kinshasa.",
     )
     return parser.parse_args(argv)
 
@@ -130,6 +181,45 @@ def main() -> None:
         base_params = replace(base_params, show_plots=False, save_plots=True)
     if args.adaptive_alpha_schedule:
         base_params = replace(base_params, use_alpha_schedule=True)
+    if args.gui:
+        launch_gui(base_params)
+        return
+
+    profile = None
+    guidance_plan = None
+    if args.target_city:
+        profile = build_mission_target_profile(
+            args.target_city,
+            base_params,
+            country=args.target_country,
+            allow_online=not args.target_offline_only,
+        )
+        if args.earth_guided_regional:
+            base_params = build_regional_earth_guided_params(base_params, profile)
+        guidance_plan = build_geodesic_guidance_plan(profile, base_params)
+        print(format_mission_target_report(profile))
+        print()
+        print(format_geodesic_guidance_report(guidance_plan))
+        if args.apply_city_target:
+            base_params = replace(
+                base_params,
+                impact_target=profile.surface_distance_m,
+                impact_target_y=0.0,
+                target_final_altitude=profile.altitude_delta_m,
+            )
+            print(
+                "Conversion simulation : "
+                f"impact_target={profile.surface_distance_m:.1f} m "
+                f"impact_target_y=0.0 m "
+                f"target_final_altitude={profile.altitude_delta_m:.1f} m"
+            )
+            if profile.surface_distance_m > 100_000.0:
+                print(
+                    "Attention            : distance geographique tres grande pour le demonstrateur actuel ; "
+                    "les solveurs presents restent surtout utiles pour l'etude du guidage."
+                )
+        if args.target_report_only or args.guidance_report_only:
+            return
 
     output_dir = Path(__file__).resolve().parent.parent
     results_dir = output_dir / "results"
@@ -140,6 +230,28 @@ def main() -> None:
     history_3d_csv = results_dir / "tvc_rocket_3d_preview.csv"
     history_6dof_csv = results_dir / "tvc_rocket_6dof_history.csv"
     history_6dof_guided_csv = results_dir / "tvc_rocket_6dof_guided_history.csv"
+    history_earth_guided_csv = results_dir / "tvc_rocket_earth_guided_history.csv"
+
+    if args.mode == "earth-guided":
+        if profile is None or guidance_plan is None:
+            raise ValueError("Le mode earth-guided demande --target-city pour definir une cible geodesique.")
+        earth_history = simulate_earth_guided(base_params, profile, guidance_plan)
+        earth_metrics = summarize_earth_guided_metrics(earth_history, guidance_plan, profile)
+        write_history_csv(earth_history, history_earth_guided_csv)
+        print("Mode                 : earth-guided")
+        print(f"Preset regional      : {'oui' if args.earth_guided_regional else 'non'}")
+        print(
+            f"azimuth={earth_metrics['azimuth_deg']:.2f} deg "
+            f"distance_sol={earth_metrics['target_surface_distance_m'] / 1000.0:.1f} km "
+            f"err_horiz={earth_metrics['horizontal_error_m'] / 1000.0:.1f} km "
+            f"t_vol={earth_metrics['flight_time']:.1f} s"
+        )
+        print(f"CSV trajectoire      : {history_earth_guided_csv}")
+        if base_params.save_plots:
+            print(f"Dossier PNG          : {plots_dir}")
+        summarize_earth_guided(earth_history, profile, guidance_plan)
+        maybe_plot_earth_guided(earth_history, base_params, profile, guidance_plan, plots_dir)
+        return
 
     if args.mode == "6dof":
         history_6dof = simulate_rocket_6dof(base_params)
