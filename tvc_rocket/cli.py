@@ -6,9 +6,24 @@ from pathlib import Path
 
 from .models import ControllerGains, RocketParameters, TuningResult, default_controller_gains
 from .output import write_history_csv, write_tuning_csv
-from .plotting import maybe_plot, maybe_plot_3d_preview, maybe_plot_tuning_comparison, summarize, summarize_3d_preview
+from .plotting import (
+    maybe_plot,
+    maybe_plot_3d_preview,
+    maybe_plot_6dof,
+    maybe_plot_tuning_comparison,
+    summarize,
+    summarize_3d_preview,
+    summarize_6dof,
+)
+from .plotting_6dof_guided import maybe_plot_6dof_guided, summarize_6dof_guided
 from .simulation import build_pid, evaluate_history, score_history, simulate_rocket
 from .simulation_3d import simulate_rocket_3d_preview
+from .simulation_6dof import simulate_rocket_6dof, summarize_6dof_metrics
+from .simulation_6dof_guided import (
+    build_short_range_guided_params,
+    simulate_rocket_6dof_guided,
+    summarize_6dof_guided_metrics,
+)
 from .tuning import auto_tune_controller
 
 
@@ -17,6 +32,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         description="Simulation de fusee TVC avec tuning automatique vers un point d'impact cible."
     )
     parser.add_argument("--impact-target", type=float, default=None, help="Distance cible d'impact au sol en metres.")
+    parser.add_argument(
+        "--impact-target-y",
+        type=float,
+        default=None,
+        help="Position laterale cible d'impact au sol en metres pour le guidage 3D.",
+    )
     parser.add_argument("--altitude-target", type=float, default=None, help="Apogee cible en metres.")
     parser.add_argument(
         "--display-seconds",
@@ -68,9 +89,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Active une limitation experimentale de la consigne alpha en fonction de la pression dynamique.",
     )
     parser.add_argument(
+        "--mode",
+        choices=("2d", "6dof", "6dof-guided"),
+        default="2d",
+        help="Mode principal de simulation : 2d, 6dof experimental, ou 6dof-guided pour le tuning 3D cible.",
+    )
+    parser.add_argument(
         "--preview-3d",
         action="store_true",
         help="Genere une preview 3D simplifiee a partir de la trajectoire 2D et d'un vent lateral.",
+    )
+    parser.add_argument(
+        "--guided-phase",
+        choices=("auto", "longitudinal", "lateral", "target3d"),
+        default="auto",
+        help="Pour le mode 6dof-guided, force une phase de reglage : longitudinal, lateral, target3d ou auto.",
+    )
+    parser.add_argument(
+        "--guided-short-range",
+        action="store_true",
+        help="Active un preset 6dof-guided adapte aux cibles courtes autour de 800 m.",
     )
     return parser.parse_args(argv)
 
@@ -80,6 +118,8 @@ def main() -> None:
     base_params = RocketParameters(tuning_mode=args.tuning_mode)
     if args.impact_target is not None:
         base_params = replace(base_params, impact_target=args.impact_target)
+    if args.impact_target_y is not None:
+        base_params = replace(base_params, impact_target_y=args.impact_target_y)
     if args.altitude_target is not None:
         base_params = replace(base_params, altitude_target=args.altitude_target)
     if args.crosswind_ref is not None:
@@ -98,6 +138,49 @@ def main() -> None:
     tuning_csv = results_dir / "tvc_rocket_tuning_results.csv"
     history_csv = results_dir / "tvc_rocket_best_history.csv"
     history_3d_csv = results_dir / "tvc_rocket_3d_preview.csv"
+    history_6dof_csv = results_dir / "tvc_rocket_6dof_history.csv"
+    history_6dof_guided_csv = results_dir / "tvc_rocket_6dof_guided_history.csv"
+
+    if args.mode == "6dof":
+        history_6dof = simulate_rocket_6dof(base_params)
+        metrics_6dof = summarize_6dof_metrics(history_6dof, base_params)
+        write_history_csv(history_6dof, history_6dof_csv)
+        print("Mode                 : 6dof")
+        print(
+            f"Apogee={metrics_6dof['peak_altitude']:.1f} m "
+            f"portee={metrics_6dof['downrange']:.1f} m "
+            f"crossrange={metrics_6dof['crossrange']:.1f} m "
+            f"err_3d={metrics_6dof['impact_error']:.1f} m "
+            f"t_vol={metrics_6dof['flight_time']:.1f} s"
+        )
+        print(f"CSV trajectoire      : {history_6dof_csv}")
+        if base_params.save_plots:
+            print(f"Dossier PNG          : {plots_dir}")
+        summarize_6dof(history_6dof)
+        maybe_plot_6dof(history_6dof, base_params, plots_dir)
+        return
+
+    if args.mode == "6dof-guided":
+        guided_params = build_short_range_guided_params(base_params) if args.guided_short_range else base_params
+        history_guided = simulate_rocket_6dof_guided(guided_params, phase_mode=args.guided_phase)
+        metrics_guided = summarize_6dof_guided_metrics(history_guided, guided_params)
+        write_history_csv(history_guided, history_6dof_guided_csv)
+        print("Mode                 : 6dof-guided")
+        print(f"Phase guidee         : {args.guided_phase}")
+        print(f"Preset courte portee : {'oui' if args.guided_short_range else 'non'}")
+        print(
+            f"Apogee={metrics_guided['peak_altitude']:.1f} m "
+            f"portee={metrics_guided['downrange']:.1f} m "
+            f"crossrange={metrics_guided['crossrange']:.1f} m "
+            f"err_3d={metrics_guided['impact_error_3d']:.1f} m "
+            f"t_vol={metrics_guided['flight_time']:.1f} s"
+        )
+        print(f"CSV trajectoire      : {history_6dof_guided_csv}")
+        if base_params.save_plots:
+            print(f"Dossier PNG          : {plots_dir}")
+        summarize_6dof_guided(history_guided)
+        maybe_plot_6dof_guided(history_guided, guided_params, plots_dir)
+        return
 
     if args.no_tune:
         gains = default_controller_gains(base_params)

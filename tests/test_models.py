@@ -14,7 +14,7 @@ class ModelsTestCase(unittest.TestCase):
         wrapped = wrap_angle(3.0 * math.pi)
         self.assertGreaterEqual(wrapped, -math.pi)
         self.assertLessEqual(wrapped, math.pi)
-        self.assertAlmostEqual(wrapped, math.pi, places=7)
+        self.assertAlmostEqual(abs(wrapped), math.pi, places=7)
 
     def test_parameter_properties_are_positive(self):
         params = RocketParameters()

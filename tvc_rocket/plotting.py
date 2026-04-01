@@ -212,3 +212,78 @@ def maybe_plot_3d_preview(
     if params.save_plots:
         save_figure(fig, output_dir / "tvc_rocket_3d_preview.png")
     present_figure(plt, fig, show_plots, params.plot_display_seconds)
+
+
+def summarize_6dof(history: list[dict[str, float]]) -> None:
+    if not history:
+        return
+    final = history[-1]
+    max_lateral = max(abs(sample["y"]) for sample in history)
+    print("Simulation 6DOF")
+    print(f"Portee horizontale   : {final['x']:8.1f} m")
+    print(f"Deviation laterale   : {final['y']:8.1f} m")
+    print(f"Deviation max        : {max_lateral:8.1f} m")
+    print(f"Altitude max         : {max(sample['z'] for sample in history):8.1f} m")
+    print(f"Vitesse finale       : {final['speed']:8.1f} m/s")
+    print(f"Roll final           : {degrees(final['roll']):8.2f} deg")
+    print(f"Pitch final          : {degrees(final['pitch']):8.2f} deg")
+    print(f"Yaw final            : {degrees(final['yaw']):8.2f} deg")
+
+
+def maybe_plot_6dof(history: list[dict[str, float]], params: RocketParameters, output_dir: Path) -> None:
+    if not history:
+        return
+    try:
+        plt, show_plots = prepare_matplotlib(params.show_plots)
+    except ImportError:
+        print("matplotlib non disponible : graphes 6DOF ignores.")
+        return
+
+    t = [sample["t"] for sample in history]
+    x = [sample["x"] for sample in history]
+    y = [sample["y"] for sample in history]
+    z = [sample["z"] for sample in history]
+    roll = [degrees(sample["roll"]) for sample in history]
+    pitch = [degrees(sample["pitch"]) for sample in history]
+    yaw = [degrees(sample["yaw"]) for sample in history]
+    gimbal_pitch = [sample["gimbal_pitch_deg"] for sample in history]
+    gimbal_yaw = [sample["gimbal_yaw_deg"] for sample in history]
+
+    fig = plt.figure(figsize=(12, 8))
+    ax3d = fig.add_subplot(2, 2, 1, projection="3d")
+    ax3d.plot(x, y, z, color="tab:purple", linewidth=2.0)
+    ax3d.set_title("Trajectoire 6DOF")
+    ax3d.set_xlabel("X (m)")
+    ax3d.set_ylabel("Y (m)")
+    ax3d.set_zlabel("Z (m)")
+
+    ax2 = fig.add_subplot(2, 2, 2)
+    ax2.plot(t, roll, label="roll", linewidth=1.8)
+    ax2.plot(t, pitch, label="pitch", linewidth=2.0)
+    ax2.plot(t, yaw, label="yaw", linewidth=2.0)
+    ax2.set_title("Attitude")
+    ax2.set_xlabel("Temps (s)")
+    ax2.set_ylabel("Angle (deg)")
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+
+    ax3 = fig.add_subplot(2, 2, 3)
+    ax3.plot(t, y, label="crossrange", linewidth=2.0)
+    ax3.set_title("Deviation laterale")
+    ax3.set_xlabel("Temps (s)")
+    ax3.set_ylabel("Y (m)")
+    ax3.grid(True, alpha=0.3)
+
+    ax4 = fig.add_subplot(2, 2, 4)
+    ax4.plot(t, gimbal_pitch, label="gimbal pitch", linewidth=1.8)
+    ax4.plot(t, gimbal_yaw, label="gimbal yaw", linewidth=1.8)
+    ax4.set_title("Commande TVC 2 axes")
+    ax4.set_xlabel("Temps (s)")
+    ax4.set_ylabel("Angle (deg)")
+    ax4.grid(True, alpha=0.3)
+    ax4.legend()
+
+    fig.tight_layout()
+    if params.save_plots:
+        save_figure(fig, output_dir / "tvc_rocket_6dof_plots.png")
+    present_figure(plt, fig, show_plots, params.plot_display_seconds)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import pi
+from math import isfinite, pi
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -9,11 +9,9 @@ def clamp(value: float, low: float, high: float) -> float:
 
 
 def wrap_angle(angle: float) -> float:
-    while angle > pi:
-        angle -= 2.0 * pi
-    while angle < -pi:
-        angle += 2.0 * pi
-    return angle
+    if not isfinite(angle):
+        return 0.0
+    return (angle + pi) % (2.0 * pi) - pi
 
 
 @dataclass
@@ -31,10 +29,16 @@ class RocketParameters:
     transonic_mach_center: float = 1.0
     transonic_mach_width: float = 0.22
     cl_alpha: float = 1.4
+    cy_beta: float = 1.15
     iyy: float = 7.5
+    ixx: float = 4.0
+    izz: float = 7.5
     body_length: float = 2.2
     tvc_arm: float = 0.85
+    roll_damping: float = 7.0
     pitch_damping: float = 18.0
+    yaw_damping: float = 18.0
+    roll_stability: float = 0.45
     static_stability: float = 1.8
     max_gimbal_deg: float = 6.0
     max_gimbal_rate_deg_s: float = 18.0
@@ -49,11 +53,15 @@ class RocketParameters:
     theta_initial_deg: float = 90.0
     altitude_target: float = 2500.0
     impact_target: float = 800.0
+    impact_target_y: float = 0.0
+    target_final_altitude: float = 0.0
     gravity_turn_start: float = 4.0
     gravity_turn_end: float = 14.0
     gamma_final_deg: float = 72.0
     guidance_gain: float = 0.65
     guidance_altitude_gain: float = 0.00015
+    guidance_crossrange_gain: float = 0.75
+    guidance_los_blend: float = 0.45
     wind_ref_m_s: float = 0.0
     wind_gradient_m_s_per_m: float = 0.0008
     wind_decay_altitude_m: float = 2600.0
