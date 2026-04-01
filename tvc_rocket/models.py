@@ -22,9 +22,14 @@ class RocketParameters:
     propellant_mass: float = 12.0
     thrust: float = 850.0
     burn_time: float = 18.0
+    thrust_ramp_up_time: float = 0.6
+    thrust_tailoff_time: float = 1.2
     area_ref: float = 0.018
     cd0: float = 0.22
     cd_alpha: float = 2.8
+    cd_mach_rise: float = 0.16
+    transonic_mach_center: float = 1.0
+    transonic_mach_width: float = 0.22
     cl_alpha: float = 1.4
     iyy: float = 7.5
     body_length: float = 2.2
@@ -52,6 +57,7 @@ class RocketParameters:
     wind_ref_m_s: float = 0.0
     wind_gradient_m_s_per_m: float = 0.0008
     wind_decay_altitude_m: float = 2600.0
+    crosswind_ref_m_s: float = 0.0
     launch_rail_time: float = 1.4
     save_plots: bool = True
     show_plots: bool = True

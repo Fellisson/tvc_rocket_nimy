@@ -13,10 +13,12 @@ Simulation Python d'une fusee a poussee vectorielle (`TVC`) avec :
 - `tvc_rocket.py` : point d'entree conserve pour lancer le projet simplement
 - `tvc_rocket/models.py` : parametres, etats, gains et utilitaires de base
 - `tvc_rocket/simulation.py` : dynamique, simulation et evaluation de trajectoire
+- `tvc_rocket/simulation_3d.py` : preview 3D simplifiee avec derive laterale
 - `tvc_rocket/tuning.py` : autotuning et raffinements des gains
 - `tvc_rocket/output.py` : export CSV et gestion de matplotlib
 - `tvc_rocket/plotting.py` : graphiques et resume console
 - `tvc_rocket/cli.py` : options de ligne de commande et orchestration
+- `tests/` : tests unitaires sur le modele, la simulation et la preview 3D
 - `results/` : sorties CSV de la meilleure simulation et du tuning
 - `plots/` : figures generees par le script
 
@@ -35,6 +37,7 @@ python tvc_rocket.py
 python tvc_rocket.py --impact-target 1500
 python tvc_rocket.py --impact-target 800 --tuning-mode fast
 python tvc_rocket.py --save-only
+python tvc_rocket.py --save-only --preview-3d --crosswind-ref 8
 ```
 
 Mode rapide sans autotuning :
@@ -53,14 +56,23 @@ python tvc_rocket.py --no-tune --impact-target 1000 --gamma-final-deg 74
 - `--no-tune` : saute l'autotuning et utilise directement les gains fournis
 - `--kp --ki --kd` : gains PID manuels
 - `--guidance-gain` : gain principal de la loi de guidage
+- `--crosswind-ref` : vent lateral de reference en m/s pour la preview 3D
 - `--guidance-altitude-gain` : correction d'altitude de la loi de guidage
 - `--gamma-final-deg` : angle final vise pour la gravity turn
 - `--adaptive-alpha-schedule` : active une limitation experimentale de la consigne alpha a forte pression dynamique
+- `--preview-3d` : produit une preview 3D simplifiee avec derive laterale et graphe dedie
 - `--save-only` : sauvegarde les PNG sans ouvrir les fenetres
 - `--display-seconds` : duree d'affichage automatique des graphes
 
+## Tests
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
 ## Remarques
 
+- Le modele utilise maintenant une atmosphere standard simplifiee, une trainee sensible au Mach et un profil de poussee avec montee puis tail-off.
 - L'autotuning peut prendre du temps, surtout en mode `accurate`.
 - Le mode `--no-tune` est pratique pour iterer rapidement sur le modele ou tester des gains connus.
 - `--adaptive-alpha-schedule` est experimental et n'est pas active par defaut.

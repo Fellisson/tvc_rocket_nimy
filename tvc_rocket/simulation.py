@@ -48,14 +48,54 @@ def interpolate_ground_impact(previous: dict[str, float], current: dict[str, flo
     return impact
 
 
+def atmosphere_state(altitude: float) -> dict[str, float]:
+    altitude = max(altitude, 0.0)
+    if altitude <= 11000.0:
+        temperature = 288.15 - 0.0065 * altitude
+        pressure = 101325.0 * (temperature / 288.15) ** 5.255877
+    else:
+        temperature = 216.65
+        pressure = 22632.06 * exp(-(altitude - 11000.0) / 6341.62)
+
+    density = pressure / (287.05 * temperature)
+    sound_speed = (1.4 * 287.05 * temperature) ** 0.5
+    return {
+        "temperature": temperature,
+        "pressure": pressure,
+        "density": density,
+        "sound_speed": sound_speed,
+    }
+
+
 def air_density(altitude: float) -> float:
-    return 1.225 * exp(-max(altitude, 0.0) / 8500.0)
+    return atmosphere_state(altitude)["density"]
 
 
 def wind_velocity(altitude: float, params: RocketParameters) -> float:
     gradient = 1.0 + params.wind_gradient_m_s_per_m * max(altitude, 0.0)
     decay = exp(-max(altitude, 0.0) / params.wind_decay_altitude_m)
     return params.wind_ref_m_s * gradient * decay
+
+
+def thrust_profile_factor(t: float, params: RocketParameters) -> float:
+    if t < 0.0 or t >= params.burn_time:
+        return 0.0
+
+    ramp_up = max(params.thrust_ramp_up_time, 1e-6)
+    tailoff_start = max(0.0, params.burn_time - params.thrust_tailoff_time)
+
+    if t < ramp_up:
+        return clamp(t / ramp_up, 0.35, 1.0)
+    if t > tailoff_start:
+        tailoff_duration = max(params.burn_time - tailoff_start, 1e-6)
+        return clamp((params.burn_time - t) / tailoff_duration, 0.25, 1.0)
+    return 1.0
+
+
+def effective_drag_coefficient(alpha_air: float, mach: float, params: RocketParameters) -> float:
+    transonic_delta = (mach - params.transonic_mach_center) / max(params.transonic_mach_width, 1e-6)
+    mach_rise = params.cd_mach_rise * exp(-0.5 * transonic_delta * transonic_delta)
+    return params.cd0 + params.cd_alpha * alpha_air * alpha_air + mach_rise
 
 
 def gamma_reference(t: float, params: RocketParameters) -> float:
@@ -126,6 +166,7 @@ def step_dynamics(
     alpha_air = wrap_angle(state.theta - gamma_air) if airspeed > 25.0 else alpha
 
     is_burning = state.t < params.burn_time and state.mass > params.dry_mass
+    atm = atmosphere_state(state.z)
 
     if state.t < params.launch_rail_time:
         gamma_ref = params.gamma_initial_deg * pi / 180.0
@@ -148,17 +189,19 @@ def step_dynamics(
         gimbal_cmd = pid.update(alpha_cmd - alpha_air, dt, freeze_integrator=freeze_integrator)
     gimbal = actuator.update(gimbal_cmd, dt)
 
-    thrust = params.thrust if is_burning else 0.0
+    thrust = params.thrust * thrust_profile_factor(state.t, params) if is_burning else 0.0
     mdot = params.mass_flow if is_burning else 0.0
 
-    rho = air_density(state.z)
+    rho = atm["density"]
     q_dyn = 0.5 * rho * airspeed * airspeed
+    mach = airspeed / max(atm["sound_speed"], 1.0)
     alpha_limit = scheduled_alpha_limit(q_dyn, params)
     if params.use_alpha_schedule and state.t >= params.launch_rail_time and is_burning:
         alpha_cmd = clamp(alpha_cmd, -alpha_limit, alpha_limit)
         gimbal_cmd = pid.update(alpha_cmd - alpha_air, dt, freeze_integrator=freeze_integrator)
         gimbal = actuator.update(gimbal_cmd, dt)
-    drag = q_dyn * params.area_ref * (params.cd0 + params.cd_alpha * alpha_air * alpha_air)
+    cd_eff = effective_drag_coefficient(alpha_air, mach, params)
+    drag = q_dyn * params.area_ref * cd_eff
     lift = q_dyn * params.area_ref * params.cl_alpha * alpha_air
 
     thrust_angle = state.theta + gimbal
@@ -191,6 +234,10 @@ def step_dynamics(
         "gimbal": gimbal,
         "speed": speed,
         "airspeed": airspeed,
+        "mach": mach,
+        "q_dyn": q_dyn,
+        "rho": rho,
+        "cd_eff": cd_eff,
         "thrust": thrust,
         "wind_x": wind_x,
     }
@@ -232,7 +279,11 @@ def simulate_rocket(params: RocketParameters, pid: PIDController) -> list[dict[s
                 "gimbal": 0.0,
                 "speed": initial_speed,
                 "airspeed": initial_speed,
-                "thrust": params.thrust,
+                "mach": initial_speed / max(atmosphere_state(state.z)["sound_speed"], 1.0),
+                "q_dyn": 0.5 * air_density(state.z) * initial_speed * initial_speed,
+                "rho": air_density(state.z),
+                "cd_eff": params.cd0,
+                "thrust": params.thrust * thrust_profile_factor(state.t, params),
                 "wind_x": wind_velocity(state.z, params),
             },
         )

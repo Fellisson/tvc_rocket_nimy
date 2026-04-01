@@ -6,12 +6,13 @@ from pathlib import Path
 
 from .models import ControllerGains, RocketParameters, TuningResult, default_controller_gains
 from .output import write_history_csv, write_tuning_csv
-from .plotting import maybe_plot, maybe_plot_tuning_comparison, summarize
+from .plotting import maybe_plot, maybe_plot_3d_preview, maybe_plot_tuning_comparison, summarize, summarize_3d_preview
 from .simulation import build_pid, evaluate_history, score_history, simulate_rocket
+from .simulation_3d import simulate_rocket_3d_preview
 from .tuning import auto_tune_controller
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Simulation de fusee TVC avec tuning automatique vers un point d'impact cible."
     )
@@ -44,6 +45,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--kd", type=float, default=None, help="Gain derive du PID.")
     parser.add_argument("--guidance-gain", type=float, default=None, help="Gain principal de la loi de guidage.")
     parser.add_argument(
+        "--crosswind-ref",
+        type=float,
+        default=None,
+        help="Vent lateral de reference en m/s pour la preview 3D.",
+    )
+    parser.add_argument(
         "--guidance-altitude-gain",
         type=float,
         default=None,
@@ -60,7 +67,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Active une limitation experimentale de la consigne alpha en fonction de la pression dynamique.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--preview-3d",
+        action="store_true",
+        help="Genere une preview 3D simplifiee a partir de la trajectoire 2D et d'un vent lateral.",
+    )
+    return parser.parse_args(argv)
 
 
 def main() -> None:
@@ -70,6 +82,8 @@ def main() -> None:
         base_params = replace(base_params, impact_target=args.impact_target)
     if args.altitude_target is not None:
         base_params = replace(base_params, altitude_target=args.altitude_target)
+    if args.crosswind_ref is not None:
+        base_params = replace(base_params, crosswind_ref_m_s=args.crosswind_ref)
     if args.display_seconds is not None:
         base_params = replace(base_params, plot_display_seconds=max(args.display_seconds, 0.1))
     if args.save_only:
@@ -83,6 +97,7 @@ def main() -> None:
     results_dir.mkdir(parents=True, exist_ok=True)
     tuning_csv = results_dir / "tvc_rocket_tuning_results.csv"
     history_csv = results_dir / "tvc_rocket_best_history.csv"
+    history_3d_csv = results_dir / "tvc_rocket_3d_preview.csv"
 
     if args.no_tune:
         gains = default_controller_gains(base_params)
@@ -146,5 +161,11 @@ def main() -> None:
         print(f"Dossier PNG          : {plots_dir}")
     summarize(history, params)
     maybe_plot(history, params, plots_dir)
+    if args.preview_3d:
+        history_3d = simulate_rocket_3d_preview(history, params)
+        write_history_csv(history_3d, history_3d_csv)
+        print(f"CSV preview 3D       : {history_3d_csv}")
+        summarize_3d_preview(history_3d)
+        maybe_plot_3d_preview(history_3d, params, plots_dir)
     if tuning_results:
         maybe_plot_tuning_comparison(params, tuning_results, plots_dir)

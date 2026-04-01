@@ -156,3 +156,59 @@ def maybe_plot(history: list[dict[str, float]], params: RocketParameters, output
     if params.save_plots:
         save_figure(fig_wind, output_dir / "tvc_rocket_wind_profile.png")
     present_figure(plt, fig_wind, show_plots, params.plot_display_seconds)
+
+
+def summarize_3d_preview(history_3d: list[dict[str, float]]) -> None:
+    if not history_3d:
+        return
+    final = history_3d[-1]
+    max_lateral = max(abs(sample["y"]) for sample in history_3d)
+    max_crosswind = max(abs(sample["crosswind_y"]) for sample in history_3d)
+    print("Preview 3D")
+    print(f"Deviation laterale fin : {final['y']:8.2f} m")
+    print(f"Deviation laterale max : {max_lateral:8.2f} m")
+    print(f"Vent lateral max      : {max_crosswind:8.2f} m/s")
+    print(f"Cap final             : {final['heading_deg']:8.2f} deg")
+
+
+def maybe_plot_3d_preview(
+    history_3d: list[dict[str, float]],
+    params: RocketParameters,
+    output_dir: Path,
+) -> None:
+    if not history_3d:
+        return
+
+    try:
+        plt, show_plots = prepare_matplotlib(params.show_plots)
+    except ImportError:
+        print("matplotlib non disponible : preview 3D ignoree.")
+        return
+
+    x = [sample["x"] for sample in history_3d]
+    y = [sample["y"] for sample in history_3d]
+    z = [sample["z"] for sample in history_3d]
+    t = [sample["t"] for sample in history_3d]
+    crosswind = [sample["crosswind_y"] for sample in history_3d]
+
+    fig = plt.figure(figsize=(12, 5))
+    ax3d = fig.add_subplot(1, 2, 1, projection="3d")
+    ax3d.plot(x, y, z, color="tab:orange", linewidth=2.0)
+    ax3d.set_title("Trajectoire 3D preview")
+    ax3d.set_xlabel("X (m)")
+    ax3d.set_ylabel("Y (m)")
+    ax3d.set_zlabel("Z (m)")
+
+    ax2 = fig.add_subplot(1, 2, 2)
+    ax2.plot(t, y, label="deviation laterale", linewidth=2.0)
+    ax2.plot(t, crosswind, "--", label="vent lateral", linewidth=1.8)
+    ax2.set_title("Effet lateral")
+    ax2.set_xlabel("Temps (s)")
+    ax2.set_ylabel("Metres / m/s")
+    ax2.grid(True, alpha=0.3)
+    ax2.legend()
+
+    fig.tight_layout()
+    if params.save_plots:
+        save_figure(fig, output_dir / "tvc_rocket_3d_preview.png")
+    present_figure(plt, fig, show_plots, params.plot_display_seconds)
